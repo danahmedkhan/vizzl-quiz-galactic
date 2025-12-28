@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vizzl Quiz: Galactic Laser Run</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- RESET & BASE --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Montserrat', sans-serif;
+            color: white;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+        }
+
+        /* --- UI OVERLAY --- */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 50; /* High priority layer */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            /* Subtle vignette for helmet feel */
+            background: radial-gradient(circle at center, transparent 50%, rgba(0, 0, 0, 0.4) 100%);
+        }
+
+        /* --- COCKPIT CURVATURE (Dynamic Tilting Frame) --- */
+        .cockpit-frame {
+            position: absolute;
+            bottom: -40px; 
+            left: -10%; 
+            width: 120%;
+            height: 140px; 
+            z-index: 15; 
+            pointer-events: none;
+            
+            /* The Curvature Shape */
+            border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+            
+            /* Dark Dashboard Material */
+            background: linear-gradient(to bottom, #0a0a0a, #000);
+            
+            /* THE MULTI-NEON COLOR EDGE */
+            box-shadow: 
+                0 -2px 0 rgba(255,255,255,0.9), 
+                0 -6px 20px #00FFC2,             
+                0 -20px 50px #FF2E93,            
+                inset 0 10px 40px #2A004E;       
+                
+            transform-origin: 50% 100%; 
+            transition: transform 0.1s cubic-bezier(0.1, 0.5, 0.1, 1); 
+            
+            animation: edge-pulse 2s infinite alternate ease-in-out;
+        }
+
+        @keyframes edge-pulse {
+            0% { opacity: 0.9; filter: brightness(1); }
+            100% { opacity: 1; filter: brightness(1.2); }
+        }
+
+        /* --- GAME HUD --- */
+        .game-ui {
+            opacity: 0;
+            transition: opacity 1s ease;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding-bottom: 50px; 
+        }
+        .game-ui.visible { opacity: 1; }
+
+        .hud-top {
+            position: absolute;
+            top: 20px;
+            left: 80px; 
+            right: 80px; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-container { display: flex; align-items: center; gap: 15px; }
+        
+        .logo-img {
+            width: 60px; height: 60px; border-radius: 50%;
+            border: 2px solid #ff00cc;
+            box-shadow: 0 0 25px #ff00cc, 0 0 10px #00f3ff;
+            object-fit: cover;
+        }
+
+        .channel-title {
+            font-family: 'Orbitron', sans-serif; 
+            font-size: 2.0rem; 
+            font-weight: 900;
+            letter-spacing: 3px;
+            background: linear-gradient(135deg, #FF2E93 20%, #00FFC2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 3px #00FFC2) drop-shadow(3px 3px 0 #2A004E);
+        }
+
+        .streak-container { font-family: 'Orbitron', sans-serif; text-align: right; }
+        .streak-label { font-size: 0.8rem; color: #00f3ff; letter-spacing: 2px; text-transform: uppercase; }
+        .streak-value { font-size: 2.5rem; font-weight: 900; color: #fff; text-shadow: 0 0 15px #ff00cc; }
+
+        .progress-track {
+            position: absolute; top: 90px; left: 50%; transform: translateX(-50%);
+            width: 60%; height: 4px; background: rgba(255,255,255,0.1);
+            border-radius: 2px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; width: 0%; background: linear-gradient(90deg, #ff00cc, #00f3ff);
+            box-shadow: 0 0 15px #ff00cc; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* --- CINEMATIC OVERLAY --- */
+        #cinematic-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 100; /* Highest priority */
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1s ease;
+            background: rgba(0, 0, 0, 0.6); 
+            backdrop-filter: blur(5px);
+        }
+        #cinematic-layer.visible { opacity: 1; }
+
+        #cine-content {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        #cine-content.cine-active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .cine-title {
+            font-family: 'Orbitron', sans-serif; font-size: 5rem; font-weight: 900;
+            color: #ffffff; text-transform: uppercase;
+            text-shadow: 0 0 10px #ff00cc, 0 0 30px #ff00cc, 0 0 60px #00f3ff;
+            margin-bottom: 20px;
+        }
+        .cine-subtitle {
+            font-family: 'Montserrat', sans-serif; font-size: 2.5rem; font-weight: 700;
+            color: #00f3ff; letter-spacing: 3px;
+            text-shadow: 0 0 10px #00f3ff, 0 0 20px #000000;
+        }
+
+        .social-icons {
+            display: flex; gap: 40px; margin-top: 50px; justify-content: center;
+            pointer-events: auto; /* Enable clicks if needed */
+        }
+        .social-link { text-decoration: none; display: inline-block; }
+        .s-icon {
+            font-size: 3.5rem; color: white;
+            transition: transform 0.3s;
+            animation: pulse-icon 2s infinite;
+        }
+        .fa-instagram { color: #E1306C; filter: drop-shadow(0 0 10px #E1306C); }
+        .fa-twitter { color: #1DA1F2; filter: drop-shadow(0 0 10px #1DA1F2); }
+        .fa-facebook { color: #1877F2; filter: drop-shadow(0 0 10px #1877F2); }
+        .fa-tiktok { 
+            color: #FFFFFF; 
+            text-shadow: -2px -2px 0 #FE2C55, 2px 2px 0 #25F4EE;
+            filter: drop-shadow(0 0 15px rgba(255,255,255,0.5));
+        }
+        @keyframes pulse-icon { 0%,100%{transform:scale(1);} 50%{transform:scale(1.15);} }
+
+        /* --- QUESTION BOX --- */
+        .question-box {
+            width: 80%; max-width: 900px; padding: 40px; margin-bottom: 30px;
+            background: rgba(10, 0, 20, 0.85); border: 1px solid rgba(0, 243, 255, 0.5);
+            border-radius: 20px; backdrop-filter: blur(12px); text-align: center;
+            box-shadow: 0 0 40px rgba(255, 0, 204, 0.2);
+            position: relative;
+        }
+        .question-box.pulsing { animation: borderPulse 3s infinite ease-in-out; }
+        @keyframes borderPulse {
+            0%, 100% { border-color: rgba(0, 243, 255, 0.3); }
+            50% { border-color: rgba(255, 0, 204, 0.8); box-shadow: 0 0 40px rgba(255, 0, 204, 0.3); }
+        }
+        .question-text { font-family: 'Orbitron', sans-serif; font-size: 2.2rem; line-height: 1.4; color: #fff; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); }
+
+        /* --- OPTIONS --- */
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 80%; max-width: 900px; }
+        .option-card {
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border: 1px solid rgba(255, 0, 204, 0.3); border-radius: 12px; padding: 25px;
+            font-size: 1.5rem; font-weight: 600; color: #e0e0e0;
+            display: flex; align-items: center; overflow: hidden;
+            position: relative;
+        }
+        .option-card .label { color: #ff00cc; font-family: 'Orbitron', sans-serif; margin-right: 15px; font-weight: 900; font-size: 1.2em; }
+        @keyframes float-emoji { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-4px) rotate(5deg); } }
+        .emoji-icon { font-size: 1.8rem; margin-right: 15px; display: inline-block; filter: drop-shadow(0 0 5px rgba(255,255,255,0.4)); animation: float-emoji 3s ease-in-out infinite; }
+        .option-card.correct { background: rgba(0, 255, 128, 0.25); border-color: #00ff80; box-shadow: 0 0 30px rgba(0, 255, 128, 0.5); color: #fff; transform: scale(1.05); z-index: 20; }
+        .option-card.dimmed { opacity: 0.1; filter: blur(4px) grayscale(90%); }
+
+        /* --- FACT BOX --- */
+        .fact-box {
+            position: absolute; bottom: 140px; width: 80%; max-width: 800px; padding: 30px;
+            background: rgba(0, 20, 40, 0.95); border: 2px solid #00f3ff; border-radius: 15px;
+            box-shadow: 0 0 50px rgba(0, 243, 255, 0.4); text-align: center;
+            opacity: 0; transform: translateY(50px) scale(0.9); transition: all 0.5s ease;
+            display: none; z-index: 100;
+        }
+        .fact-box.visible { opacity: 1; transform: translateY(0) scale(1); display: block; }
+        .fact-title { font-family: 'Orbitron', sans-serif; color: #ff00cc; font-size: 1.4rem; margin-bottom: 10px; text-transform: uppercase; }
+        .fact-text { font-family: 'Montserrat', sans-serif; color: #fff; font-size: 1.3rem; line-height: 1.5; }
+
+        /* --- TIMER --- */
+        .timer-container { 
+            position: relative; width: 140px; height: 140px; 
+            margin-top: 30px; 
+            display: flex; justify-content: center; align-items: center; 
+            z-index: 60; 
+        }
+        .timer-svg { width: 100%; height: 100%; position:absolute; top:0; left:0; }
+        .timer-bg { fill: none; stroke: rgba(255, 255, 255, 0.05); stroke-width: 2; }
+        .timer-outer { fill: none; stroke: #00f3ff; stroke-width: 2; stroke-dasharray: 10 5; transform-origin: 50% 50%; animation: spinOrbit 2s linear infinite; opacity: 0.8; }
+        @keyframes spinOrbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .timer-inner { fill: none; stroke: #ff00cc; stroke-width: 6; stroke-dasharray: 251; stroke-dashoffset: 0; transition: stroke-dashoffset 0.1s linear; stroke-linecap: round; filter: drop-shadow(0 0 10px #ff00cc); transform: rotate(-90deg); transform-origin: 50% 50%; }
+        .timer-urgent .timer-inner { stroke: #ff0000; filter: drop-shadow(0 0 20px #ff0000); }
+        
+        /* Digital Timer Text */
+        .timer-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 0 0 15px #ff00cc;
+            z-index: 61; 
+        }
+
+        .bloom-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+        .bloom-particle { position: absolute; width: 10px; height: 10px; background: #00ff80; border-radius: 50%; box-shadow: 0 0 15px #00ff80; opacity: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="cinematic-layer">
+        <div id="cine-content" class="">
+            <div class="cine-title" id="cine-title"></div>
+            <div class="cine-subtitle" id="cine-sub"></div>
+            <div class="social-icons" id="social-icons" style="display:none;">
+                <a href="#" class="social-link"><i class="fab fa-instagram s-icon"></i></a>
+                <a href="#" class="social-link"><i class="fab fa-twitter s-icon"></i></a>
+                <a href="#" class="social-link"><i class="fab fa-tiktok s-icon"></i></a>
+                <a href="#" class="social-link"><i class="fab fa-facebook s-icon"></i></a>
+            </div>
+        </div>
+    </div>
+
+    <div class="cockpit-frame" id="cockpit-frame"></div>
+
+    <div id="ui-layer">
+        <div class="game-ui" id="game-ui">
+            <div class="hud-top">
+                <div class="logo-container">
+                    <img src="logo.png" 
+                         alt="Logo" class="logo-img"
+                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjMzMDAiIHN0cm9rZS13aWR0aD0iNCI+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iNDUiIC8+PHBhdGggZD0iTTMwIDcwIEw1MCAzMCBMNzAgNzAiIGZpbGw9IiNmZjk5MDAiIHN0cm9rZT0ibm9uZSIgb3BhY2l0eT0iMC44Ii8+PC9zdmc+'">
+                    <div class="channel-title">VIZZL QUIZ</div>
+                </div>
+                <div class="streak-container">
+                    <div class="streak-label">Streak</div>
+                    <div class="streak-value" id="streak-val">0</div>
+                </div>
+            </div>
+
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+            <div class="question-box pulsing" id="question-box">
+                <div class="question-text" id="question-text">Initializing...</div>
+            </div>
+
+            <div class="options-grid" id="options-grid">
+                <div class="option-card" id="opt-0"></div>
+                <div class="option-card" id="opt-1"></div>
+                <div class="option-card" id="opt-2"></div>
+                <div class="option-card" id="opt-3"></div>
+            </div>
+            
+            <div class="fact-box" id="fact-box">
+                <div class="fact-title">⚡ Neural Download ⚡</div>
+                <div class="fact-text" id="fact-text">Loading Data...</div>
+            </div>
+
+            <div class="timer-container" id="timer-container">
+                <svg class="timer-svg" viewBox="0 0 100 100">
+                    <circle class="timer-bg" cx="50" cy="50" r="45"></circle>
+                    <circle class="timer-outer" cx="50" cy="50" r="45"></circle>
+                    <circle class="timer-inner" id="timer-progress" cx="50" cy="50" r="40"></circle>
+                </svg>
+                <div class="timer-text" id="timer-text">15</div>
+            </div>
+        </div>
+        <div class="bloom-container" id="bloom-container"></div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+        // --- PART 1: GLOBAL IQ & LOGIC DATA (25 Mixed Questions) ---
+        const puzzles = [
+            // 1. Classic Word Riddle
+            { q: "I speak without a mouth and hear without ears. I have no body, but I come alive with wind.", options: [{t: "An Echo", e: "🔊"}, {t: "A Ghost", e: "👻"}, {t: "A Cloud", e: "☁️"}, {t: "A Shadow", e: "👥"}], correct: 0, fact: "Sound is a mechanical wave. An echo creates a delay because sound travels at roughly 343 meters per second in air!" },
+            
+            // 2. Number Sequence (IQ)
+            { q: "Find the next number in the sequence: 2, 6, 12, 20, 30, ...?", options: [{t: "42", e: "🔢"}, {t: "40", e: "❌"}, {t: "38", e: "📉"}, {t: "44", e: "📈"}], correct: 0, fact: "The pattern creates the 'Pronic Numbers' (n * (n+1)). 1*2=2, 2*3=6... so 6*7 = 42." },
+            
+            // 3. Visual Logic (Pattern)
+            { q: "Which shape completes the pattern? 🟦 🟥 🟦 🟥 ...?", options: [{t: "🟦", e: "🟦"}, {t: "🟥", e: "🟥"}, {t: "🟢", e: "🟢"}, {t: "🟡", e: "🟡"}], correct: 0, fact: "This is a simple alternating binary pattern (ABAB). Recognizing these helps with algorithmic thinking!" },
+            
+            // 4. Lateral Thinking
+            { q: "You see a boat filled with people, yet there is not a single person on board. How?", options: [{t: "They're Married", e: "💍"}, {t: "It's Magic", e: "🪄"}, {t: "It's Empty", e: "👻"}, {t: "They Dived", e: "🏊"}], correct: 0, fact: "A linguistic puzzle! 'Single' refers to relationship status, not quantity. Context changes meaning." },
+            
+            // 5. Visual Arithmetic
+            { q: "If 🍎 = 5, and 🍌 = 2. What is 🍎 + 🍌 x 🍎?", options: [{t: "15", e: "🧮"}, {t: "35", e: "❌"}, {t: "25", e: "🤔"}, {t: "10", e: "📉"}], correct: 0, fact: "Order of Operations (PEMDAS)! Multiply first: 2 x 5 = 10. Then add 5. Answer is 15." },
+            
+            // 6. Object Logic
+            { q: "The more of this there is, the less you see. What is it?", options: [{t: "Darkness", e: "🌑"}, {t: "Fog", e: "🌫️"}, {t: "Light", e: "💡"}, {t: "Glass", e: "🪟"}], correct: 0, fact: "Vision requires photons reflecting off objects. Darkness is the absence of these photons." },
+            
+            // 7. Spatial Reasoning
+            { q: "Which object does not belong in this group?", options: [{t: "Football", e: "⚽"}, {t: "Tennis Ball", e: "🎾"}, {t: "Basketball", e: "🏀"}, {t: "Pyramid", e: "🔺"}], correct: 3, fact: "Geometric classification! The first three are spheres (round). The pyramid is a polyhedron." },
+            
+            // 8. Word Association
+            { q: "What has keys but can't open locks?", options: [{t: "A Piano", e: "🎹"}, {t: "A Map", e: "🗺️"}, {t: "A Chest", e: "⚰️"}, {t: "A Door", e: "🚪"}], correct: 0, fact: "A piano key is a lever. When pressed, it actuates a hammer to strike a string, producing sound." },
+            
+            // 9. Sequence Logic
+            { q: "Which letter comes next? A, C, E, G, ...?", options: [{t: "I", e: "ℹ️"}, {t: "H", e: "♓"}, {t: "J", e: "🌶️"}, {t: "K", e: "🔑"}], correct: 0, fact: "This sequence skips every second letter of the alphabet (+2). After G comes H(skip) -> I." },
+            
+            // 10. Physics Logic
+            { q: "What goes up but never comes down?", options: [{t: "Your Age", e: "🎂"}, {t: "A Balloon", e: "🎈"}, {t: "Rain", e: "🌧️"}, {t: "Smoke", e: "💨"}], correct: 0, fact: "Time is linear and unidirectional (due to entropy). We biologically age forward, never backward." },
+            
+            // 11. Visual Math
+            { q: "Count the triangles: 📐 How many sides does a triangle have?", options: [{t: "3", e: "3️⃣"}, {t: "4", e: "4️⃣"}, {t: "2", e: "2️⃣"}, {t: "1", e: "1️⃣"}], correct: 0, fact: "By definition, a triangle is a polygon with three edges and three vertices." },
+            
+            // 12. Logical Paradox
+            { q: "What gets wetter the more it dries?", options: [{t: "A Towel", e: "🧖"}, {t: "The Sun", e: "☀️"}, {t: "Water", e: "💧"}, {t: "A Cloud", e: "☁️"}], correct: 0, fact: "Transitive verbs! To 'dry' something means to remove water from it. The towel absorbs that water." },
+            
+            // 13. Deductive Logic
+            { q: "Mary's father has 5 daughters: Nana, Nene, Nini, Nono. What is the 5th name?", options: [{t: "Mary", e: "👩"}, {t: "Nunu", e: "❌"}, {t: "Nina", e: "❌"}, {t: "Nancy", e: "❌"}], correct: 0, fact: "The first sentence states 'Mary's father'. Therefore, Mary must be one of the daughters." },
+            
+            // 14. Probability
+            { q: "If you flip a coin 3 times, how many possible outcomes are there?", options: [{t: "8", e: "🪙"}, {t: "6", e: "🎲"}, {t: "3", e: "3️⃣"}, {t: "9", e: "9️⃣"}], correct: 0, fact: "Binary exponentiation! 2 possibilities (Heads/Tails) to the power of 3 flips = 2^3 = 8." },
+            
+            // 15. World Knowledge
+            { q: "Where does today come before yesterday?", options: [{t: "Dictionary", e: "📖"}, {t: "Calendar", e: "📅"}, {t: "Future", e: "🔮"}, {t: "Clock", e: "🕰️"}], correct: 0, fact: "Lexicographical order! 'T' (Today) appears alphabetically before 'Y' (Yesterday)." },
+            
+            // 16. Pattern Recognition
+            { q: "1, 1, 2, 3, 5, 8, ...? What is next?", options: [{t: "13", e: "🐚"}, {t: "10", e: "🔟"}, {t: "11", e: "⏸️"}, {t: "15", e: "🖐️"}], correct: 0, fact: "The Fibonacci Sequence! Each number is the sum of the two preceding ones (5 + 8 = 13)." },
+            
+            // 17. Abstract Logic
+            { q: "What belongs to you, but others use it more than you?", options: [{t: "Your Name", e: "🏷️"}, {t: "Money", e: "💰"}, {t: "Car", e: "🚗"}, {t: "Phone", e: "📱"}], correct: 0, fact: "A name is a social identifier. It exists primarily for others to get your attention." },
+            
+            // 18. Physics/Chemistry
+            { q: "I am light as a feather, yet the strongest man can't hold me for 5 minutes. What am I?", options: [{t: "Breath", e: "🌬️"}, {t: "A Thought", e: "💭"}, {t: "Smoke", e: "💨"}, {t: "Light", e: "💡"}], correct: 0, fact: "The body requires oxygen exchange (respiration) constantly. Holding breath causes CO2 buildup." },
+            
+            // 19. Visual Scale
+            { q: "Which of these is the largest planet in our solar system?", options: [{t: "Jupiter", e: "🪐"}, {t: "Earth", e: "🌍"}, {t: "Saturn", e: "🌑"}, {t: "Mars", e: "🔴"}], correct: 0, fact: "Jupiter is a gas giant with a mass one-thousandth that of the Sun, but 2.5x all other planets combined." },
+            
+            // 20. Final Logic
+            { q: "What occurs once in a minute, twice in a moment, but never in a thousand years?", options: [{t: "Letter M", e: "Ⓜ️"}, {t: "Second", e: "⏱️"}, {t: "Luck", e: "🍀"}, {t: "Time", e: "⏳"}], correct: 0, fact: "Another letter counting puzzle! 'Minute' has one 'm', 'Moment' has two, 'Thousand years' has none." },
+            // Extra Qs to reach 25
+            { q: "I have lakes with no water, mountains with no stone, and cities with no buildings. What am I?", options: [{t: "A Map", e: "🗺️"}, {t: "A Globe", e: "🌍"}, {t: "A Dream", e: "💭"}, {t: "A Painting", e: "🖼️"}], correct: 0, fact: "Cartography is the study and practice of making maps, representing 3D space on a 2D surface." },
+            { q: "What is always in front of you but can’t be seen?", options: [{t: "The Future", e: "🔮"}, {t: "Air", e: "🌬️"}, {t: "Your Nose", e: "👃"}, {t: "The Past", e: "📜"}], correct: 0, fact: "The future is a concept of time that has not yet happened, making it invisible and intangible." },
+            { q: "What has a thumb and four fingers, but is not a hand?", options: [{t: "A Glove", e: "🧤"}, {t: "A Tree", e: "🌳"}, {t: "A Fork", e: "🍴"}, {t: "A Foot", e: "🦶"}], correct: 0, fact: "Gloves are designed to mimic the shape of a hand to provide protection or warmth." },
+            { q: "What goes through cities and fields, but never moves?", options: [{t: "A Road", e: "🛣️"}, {t: "A River", e: "🌊"}, {t: "A Train", e: "🚂"}, {t: "Wind", e: "🌬️"}], correct: 0, fact: "Roads provide a path for travel but remain stationary infrastructure themselves." },
+            { q: "The more you take, the more you leave behind. What am I?", options: [{t: "Footsteps", e: "👣"}, {t: "Time", e: "⏳"}, {t: "Money", e: "💸"}, {t: "Memories", e: "🧠"}], correct: 0, fact: "Walking creates tracks or 'steps' on the ground that stay behind as you move forward." }
+        ];
+
+        // --- GALACTIC ENGINE ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.005); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // COCKPIT VIEW POSITION
+        camera.position.set(0, 0, 5); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040); scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xff00cc, 2); sunLight.position.set(5, 10, 5); scene.add(sunLight);
+        const cyanLight = new THREE.PointLight(0x00f3ff, 2, 50); cyanLight.position.set(-5, 0, 0); scene.add(cyanLight);
+
+        // --- 1. EARTH & ATMOSPHERE (Bottom of Screen) ---
+        const earthGroup = new THREE.Group();
+        
+        const earthGeo = new THREE.SphereGeometry(40, 64, 64);
+        const earthMat = new THREE.MeshPhongMaterial({
+            color: 0x001133, emissive: 0x000510, specular: 0x111111, shininess: 10
+        });
+        const earth = new THREE.Mesh(earthGeo, earthMat);
+        earthGroup.add(earth);
+
+        const atmoGeo = new THREE.SphereGeometry(42, 64, 64);
+        const atmoMat = new THREE.MeshBasicMaterial({
+            color: 0x0044ff, transparent: true, opacity: 0.15, side: THREE.BackSide, blending: THREE.AdditiveBlending
+        });
+        const atmosphere = new THREE.Mesh(atmoGeo, atmoMat);
+        earthGroup.add(atmosphere);
+
+        earthGroup.position.y = -42;
+        scene.add(earthGroup);
+
+        // --- 2. WARP LASER TUNNEL ---
+        const warpCount = 3000; 
+        const warpGeo = new THREE.BufferGeometry();
+        
+        const wPos = new Float32Array(warpCount * 2 * 3); 
+        const wCols = new Float32Array(warpCount * 2 * 3);
+        const wSpeed = new Float32Array(warpCount);
+        const wPhase = new Float32Array(warpCount); 
+        const wRadius = new Float32Array(warpCount); 
+
+        const warpCol1 = new THREE.Color(0x00ff00); // Neon Green
+        const warpCol2 = new THREE.Color(0x00f3ff); // Cyan
+        const warpCol3 = new THREE.Color(0xff00cc); // Magenta
+        const tempWarpColor = new THREE.Color();
+
+        for(let i=0; i<warpCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * 80 + 15; 
+            const z = (Math.random() - 0.5) * 800 - 200; 
+            
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            const len = Math.random() * 15 + 5; 
+
+            wPos[i*6] = x; wPos[i*6+1] = y; wPos[i*6+2] = z;
+            wPos[i*6+3] = x; wPos[i*6+4] = y; wPos[i*6+5] = z + len;
+
+            wSpeed[i] = Math.random() * 2 + 1.5; 
+            wPhase[i] = Math.random() * Math.PI * 2; 
+            wRadius[i] = r;
+
+            wCols[i*6] = 0; wCols[i*6+1] = 1; wCols[i*6+2] = 1;
+            wCols[i*6+3] = 0; wCols[i*6+4] = 1; wCols[i*6+5] = 1;
+        }
+
+        warpGeo.setAttribute('position', new THREE.BufferAttribute(wPos, 3));
+        warpGeo.setAttribute('color', new THREE.BufferAttribute(wCols, 3));
+
+        const warpMat = new THREE.LineBasicMaterial({
+            vertexColors: true, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, linewidth: 1 
+        });
+
+        const warpSystem = new THREE.LineSegments(warpGeo, warpMat);
+        scene.add(warpSystem);
+
+
+        // --- 3. BACKGROUND STARFIELD ---
+        const starGeo = new THREE.BufferGeometry();
+        const starCount = 3000;
+        const sPos = new Float32Array(starCount * 3);
+        
+        for(let i=0; i<starCount; i++) {
+            sPos[i*3] = (Math.random() - 0.5) * 600;
+            sPos[i*3+1] = (Math.random() - 0.5) * 600 + 200; 
+            sPos[i*3+2] = (Math.random() - 0.5) * 600 - 100;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+        const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.8 });
+        const starSystem = new THREE.Points(starGeo, starMat);
+        scene.add(starSystem);
+
+        // Lasers
+        const lasers = [];
+        const laserGeo = new THREE.CylinderGeometry(0.05, 0.05, 30, 8); laserGeo.rotateX(Math.PI / 2);
+        const laserColors = [0x39ff14, 0xff00ff, 0x00ffff, 0xffff00];
+
+        function spawnLaser() {
+            const col = laserColors[Math.floor(Math.random() * laserColors.length)];
+            const laserMat = new THREE.MeshBasicMaterial({ color: col });
+            const laser = new THREE.Mesh(laserGeo, laserMat);
+            const lane = Math.floor(Math.random() * 3) - 1; 
+            laser.position.set(lane * 4, Math.random() * 3 - 0.5, -100);
+            
+            const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 30, 8), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending }));
+            glow.rotation.x = Math.PI / 2; laser.add(glow);
+
+            laser.userData = { speed: Math.random() * 2 + 3 };
+            scene.add(laser);
+            lasers.push(laser);
+        }
+
+        // Logic Vars
+        const qText = document.getElementById('question-text');
+        const optCards = [document.getElementById('opt-0'), document.getElementById('opt-1'), document.getElementById('opt-2'), document.getElementById('opt-3')];
+        const timerProgress = document.getElementById('timer-progress');
+        const timerText = document.getElementById('timer-text'); 
+        const streakVal = document.getElementById('streak-val');
+        const progressFill = document.getElementById('progress-fill');
+        const timerDiv = document.querySelector('.timer-inner');
+        const factBox = document.getElementById('fact-box');
+        const factText = document.getElementById('fact-text');
+        const cockpitFrame = document.getElementById('cockpit-frame'); 
+        
+        // Cinematic Elements
+        const cineLayer = document.getElementById('cinematic-layer');
+        const cineContent = document.getElementById('cine-content');
+        const cineTitle = document.getElementById('cine-title');
+        const cineSub = document.getElementById('cine-sub');
+        const socialIcons = document.getElementById('social-icons');
+        const gameUI = document.getElementById('game-ui');
+
+        let currentQuestionIndex = 0;
+        let gameState = "INTRO_1"; 
+        let stateTimer = 4.0; 
+        let lastTime = 0;
+        let streak = 0;
+        let laserSpawnTimer = 0;
+        let asteroidSpawnTimer = 0;
+        let targetX = 0;
+        let shake = 0;
+        let currentCineState = "";
+        let currentCorrectIndex = 0; 
+        let isBreak = false; // Flag for mid-roll break
+
+        function setCinematicText(title, sub, showIcons = false) {
+            const stateKey = title + sub;
+            if (currentCineState === stateKey) return; 
+            currentCineState = stateKey;
+
+            cineContent.classList.remove('cine-active');
+            setTimeout(() => {
+                cineTitle.innerText = title;
+                cineSub.innerText = sub;
+                socialIcons.style.display = showIcons ? 'flex' : 'none';
+                cineContent.classList.add('cine-active');
+            }, 500);
+        }
+
+        function loadQuestion(index) {
+            if(index >= 25) { 
+                gameState = "OUTRO_1"; 
+                stateTimer = 4.0; 
+                gameUI.classList.remove('visible');
+                cineLayer.classList.add('visible');
+                return; 
+            }
+            
+            const data = puzzles[index];
+            qText.innerText = data.q;
+
+            let indices = [0, 1, 2, 3];
+            for (let i = indices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+
+            optCards.forEach((card, i) => {
+                const originalIndex = indices[i];
+                const opt = data.options[originalIndex];
+                const labels = ["A.", "B.", "C.", "D."];
+                card.innerHTML = `<span class="label">${labels[i]}</span><span class="emoji-icon">${opt.e}</span><span class="text">${opt.t}</span>`;
+                card.className = "option-card";
+                card.style.borderColor = "rgba(255, 0, 204, 0.3)";
+                if (originalIndex === data.correct) currentCorrectIndex = i;
+            });
+
+            timerProgress.style.strokeDashoffset = 0;
+            timerDiv.style.stroke = "#ff00cc";
+            progressFill.style.width = ((index) / 25) * 100 + "%";
+            factBox.classList.remove('visible');
+            timerText.innerText = ""; 
+        }
+
+        function triggerBloom(target, isJackpot) {
+            const rect = target.getBoundingClientRect();
+            const container = document.getElementById('bloom-container');
+            for(let i=0; i<30; i++) {
+                const p = document.createElement('div');
+                p.classList.add('bloom-particle');
+                p.style.backgroundColor = isJackpot ? '#00f3ff' : '#00ff80';
+                p.style.boxShadow = `0 0 15px ${p.style.backgroundColor}`;
+                p.style.left = (rect.left + rect.width/2) + 'px';
+                p.style.top = (rect.top + rect.height/2) + 'px';
+                container.appendChild(p);
+                const angle = Math.random() * Math.PI * 2; const dist = Math.random() * 150 + 50;
+                p.animate([{ transform: `translate(0,0) scale(1)`, opacity: 1 }, { transform: `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px) scale(0)`, opacity: 0 }], { duration: 800, fill: 'forwards' });
+                setTimeout(() => p.remove(), 800);
+            }
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            const delta = (time - lastTime) / 1000;
+            lastTime = time;
+
+            let warpSpeed = (gameState.includes("INTRO") || gameState.includes("OUTRO") || gameState === "BREAK") ? 2.5 : 0.8;
+            
+            // 1. Earth Animation
+            earthGroup.rotation.y += 0.0005;
+            earthGroup.rotation.x = 0.1; 
+
+            // 2. Warp Tunnel Animation
+            const wPositions = warpSystem.geometry.attributes.position.array;
+            const wColors = warpSystem.geometry.attributes.color.array;
+            const speedMult = 2.0; 
+
+            for(let i=0; i<warpCount; i++) {
+                let z = wPositions[i*6+2];
+                z += wSpeed[i] * speedMult * warpSpeed;
+                if (z > 50) { 
+                    z = -600; 
+                    wRadius[i] = Math.random() * 80 + 15;
+                }
+
+                const waveX = Math.sin(time * 0.002 + z * 0.01 + wPhase[i]) * 5;
+                const waveY = Math.cos(time * 0.0015 + z * 0.015 + wPhase[i]) * 5;
+                const r = wRadius[i];
+                const rotSpeed = 0.0002 * z; 
+                const angle = wPhase[i] + time * 0.0005 + rotSpeed;
+                const x = Math.cos(angle) * r + waveX;
+                const y = Math.sin(angle) * r + waveY;
+                const len = wSpeed[i] * 5; 
+
+                wPositions[i*6] = x; wPositions[i*6+1] = y; wPositions[i*6+2] = z;
+                wPositions[i*6+3] = x; wPositions[i*6+4] = y; wPositions[i*6+5] = z - len; 
+
+                const depthPct = (z + 600) / 650; 
+                if (depthPct < 0.5) tempWarpColor.lerpColors(warpCol1, warpCol2, depthPct * 2);
+                else tempWarpColor.lerpColors(warpCol2, warpCol3, (depthPct - 0.5) * 2);
+
+                wColors[i*6] = tempWarpColor.r; wColors[i*6+1] = tempWarpColor.g; wColors[i*6+2] = tempWarpColor.b;
+                wColors[i*6+3] = tempWarpColor.r; wColors[i*6+4] = tempWarpColor.g; wColors[i*6+5] = tempWarpColor.b;
+            }
+            warpSystem.geometry.attributes.position.needsUpdate = true;
+            warpSystem.geometry.attributes.color.needsUpdate = true;
+
+            // 3. Starfield Drift
+            const sPos = starSystem.geometry.attributes.position.array;
+            for(let i=0; i<starCount; i++) {
+                sPos[i*3+2] += warpSpeed * 0.5; 
+                if(sPos[i*3+2] > 20) sPos[i*3+2] = -500; 
+            }
+            starSystem.geometry.attributes.position.needsUpdate = true;
+
+            if(!gameState.includes("INTRO") && !gameState.includes("OUTRO") && gameState !== "BREAK") {
+                laserSpawnTimer -= delta;
+                if(laserSpawnTimer < 0) { spawnLaser(); laserSpawnTimer = Math.random() * 0.8 + 0.2; }
+                
+                asteroidSpawnTimer -= delta;
+                if(asteroidSpawnTimer < 0) { spawnAsteroid(); asteroidSpawnTimer = Math.random() * 1.5 + 0.5; }
+
+                for(let i=lasers.length-1; i>=0; i--) {
+                    const l = lasers[i];
+                    l.position.z += l.userData.speed;
+                    
+                    // COLLISION & DODGE LOGIC (Camera based)
+                    if(l.position.z > -10 && l.position.z < 0) {
+                        const lLane = Math.round(l.position.x / 4);
+                        // Compare laser lane with virtual ship lane (using camera position logic)
+                        const myLane = Math.round(targetX / 4);
+                        
+                        if(lLane === myLane) {
+                            shake = 0.3;
+                            if(lLane === 0) targetX = (Math.random()>0.5?1:-1)*4; else targetX = 0;
+                        }
+                    }
+                    if(l.position.z > 10) { scene.remove(l); lasers.splice(i,1); }
+                }
+
+                // UPDATE ASTEROIDS
+                for(let i=asteroids.length-1; i>=0; i--) {
+                    const a = asteroids[i];
+                    a.position.z += a.userData.speed;
+                    a.rotation.x += a.userData.rotSpeedX;
+                    a.rotation.y += a.userData.rotSpeedY;
+                    if(a.position.z > 20) { scene.remove(a); asteroids.splice(i,1); }
+                }
+            }
+
+            // 4. CAMERA PHYSICS (Replaces Bot Movement)
+            // Interpolate Camera X to targetX (Strafing)
+            camera.position.x += (targetX - camera.position.x) * delta * 4;
+            
+            // Banking: Roll based on lateral movement
+            const targetBank = -(camera.position.x - targetX) * 0.05; 
+            camera.rotation.z += (targetBank - camera.rotation.z) * delta * 5;
+            
+            // Apply Camera Tilt to the Cockpit Frame UI for immersive HUD
+            // Converting radians to degrees and amplifying slightly for visual effect
+            let tilt = camera.rotation.z * 100;
+            tilt = Math.max(-15, Math.min(15, tilt)); 
+            cockpitFrame.style.transform = `rotate(${tilt}deg)`;
+
+            // Camera Shake + Hover Bob
+            shake *= 0.9;
+            const camBob = Math.sin(time * 2) * 0.1;
+            camera.position.y = camBob + (Math.random()-0.5)*shake;
+            
+            camera.rotation.x = (Math.random()-0.5)*shake * 0.2;
+
+            stateTimer -= delta;
+
+            if (gameState === "INTRO_1") {
+                cineLayer.classList.add('visible');
+                setCinematicText("WELCOME", "TO VIZZL QUIZ");
+                if(stateTimer <= 0) { gameState = "INTRO_2"; stateTimer = 4.0; }
+            }
+            else if (gameState === "INTRO_2") {
+                setCinematicText("ULTIMATE", "IQ CHALLENGE");
+                if(stateTimer <= 0) { gameState = "INTRO_3"; stateTimer = 4.0; }
+            }
+            else if (gameState === "INTRO_3") {
+                setCinematicText("IMMERSE YOURSELF", "IN A GALACTIC WORLD");
+                if(stateTimer <= 0) { gameState = "INTRO_4"; stateTimer = 4.0; }
+            }
+            else if (gameState === "INTRO_4") {
+                setCinematicText("DON'T FORGET TO", "LIKE, SHARE & SUBSCRIBE");
+                if(stateTimer <= 0) { gameState = "INTRO_5"; stateTimer = 3.5; }
+            }
+            else if (gameState === "INTRO_5") {
+                setCinematicText("LET'S DIVE", "INTO IT");
+                if(stateTimer <= 0) { 
+                    gameState = "INIT"; 
+                    cineLayer.classList.remove('visible'); 
+                    gameUI.classList.add('visible'); 
+                }
+            }
+            else if (gameState === "INIT") { 
+                loadQuestion(currentQuestionIndex); gameState = "TIMER"; stateTimer = 20.0; 
+            }
+            else if (gameState === "TIMER") {
+                // Update Digital Timer
+                timerText.innerText = Math.ceil(stateTimer);
+                
+                const progress = (20.0 - stateTimer) / 20.0;
+                timerProgress.style.strokeDashoffset = progress * 251;
+                if(stateTimer < 5.0) timerDiv.style.stroke = "#ff0000";
+                
+                if(stateTimer <= 0) {
+                    gameState = "REVEAL"; 
+                    stateTimer = 1.0; 
+                    
+                    const card = optCards[currentCorrectIndex];
+                    card.classList.add('correct');
+                    triggerBloom(card, (currentQuestionIndex+1)%5===0);
+                    streak++; streakVal.innerText = streak;
+                    optCards.forEach((c,i) => { if(i!==currentCorrectIndex) c.classList.add('dimmed'); });
+                }
+            }
+            else if (gameState === "REVEAL") {
+                timerText.innerText = "";
+                if(stateTimer <= 0) { 
+                    gameState = "FACT"; 
+                    stateTimer = 8.0; 
+                    factText.innerText = puzzles[currentQuestionIndex].fact; 
+                    factBox.classList.add('visible'); 
+                }
+            }
+            else if (gameState === "FACT") {
+                if(stateTimer <= 0) { 
+                    currentQuestionIndex++; 
+                    
+                    // --- MID-ROLL BREAK LOGIC ---
+                    // Triggers after question 5, 10, 15, 20
+                    if (currentQuestionIndex < 25 && currentQuestionIndex % 5 === 0) {
+                        gameState = "BREAK";
+                        stateTimer = 10.0; // 10s Break
+                        gameUI.classList.remove('visible');
+                        cineLayer.classList.add('visible');
+                        setCinematicText("ENJOYING THE QUIZ?", "FOLLOW @VizzlQuiz");
+                    } else if (currentQuestionIndex >= 25) { 
+                        loadQuestion(currentQuestionIndex); // Triggers Outro
+                    } else {
+                        gameState = "INIT";
+                    }
+                }
+            }
+            else if (gameState === "BREAK") {
+                 if(stateTimer <= 0) {
+                     gameState = "INIT";
+                     cineLayer.classList.remove('visible'); 
+                     gameUI.classList.add('visible'); 
+                 }
+            }
+            else if (gameState === "OUTRO_1") {
+                setCinematicText("THANK YOU", "FOR WATCHING");
+                if(stateTimer <= 0) { gameState = "OUTRO_SCORE"; stateTimer = 4.0; }
+            }
+            else if (gameState === "OUTRO_SCORE") {
+                setCinematicText("COMMENT BELOW", "WHAT WAS YOUR SCORE?");
+                if(stateTimer <= 0) { gameState = "OUTRO_PLEASE"; stateTimer = 2.5; } 
+            }
+            else if (gameState === "OUTRO_PLEASE") {
+                setCinematicText("PLEASE", ""); 
+                if(stateTimer <= 0) { gameState = "OUTRO_ACTION"; stateTimer = 4.0; } 
+            }
+            else if (gameState === "OUTRO_ACTION") {
+                setCinematicText("LIKE, SHARE", "& SUBSCRIBE");
+                if(stateTimer <= 0) { gameState = "OUTRO_3"; stateTimer = 8.0; }
+            }
+            else if (gameState === "OUTRO_3") {
+                setCinematicText("FOLLOW US", "@VizzlQuiz", true);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ASTEROID GEOMETRY (Needed for the loop above)
+        const asteroids = [];
+        const asteroidGeo = new THREE.IcosahedronGeometry(1, 0); 
+        const asteroidMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8, flatShading: true });
+
+        function spawnAsteroid() {
+            const asteroid = new THREE.Mesh(asteroidGeo, asteroidMat);
+            const spreadX = (Math.random() - 0.5) * 150; const spreadY = (Math.random() - 0.5) * 100; const startZ = -600 - Math.random() * 200;
+            asteroid.position.set(spreadX, spreadY, startZ);
+            asteroid.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            asteroid.scale.setScalar(Math.random() * 3 + 1);
+            asteroid.userData = { speed: Math.random() * 4 + 6, rotSpeedX: (Math.random() - 0.5) * 0.05, rotSpeedY: (Math.random() - 0.5) * 0.05 };
+            scene.add(asteroid); asteroids.push(asteroid);
+        }
+
+        setCinematicText("WELCOME", "TO VIZZL QUIZ");
+        animate(0);
+    </script>
+</body>
+</html>
